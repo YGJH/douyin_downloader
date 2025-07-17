@@ -1,0 +1,22 @@
+[project]
+name = "pythonshit"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "box2d>=2.3.10",
+    "drissionpage>=4.1.0.18",
+    "gym>=0.26.2",
+    "matplotlib>=3.10.3",
+    "numpy>=2.3.1",
+    "pandas>=2.3.1",
+    "pygame>=2.6.1",
+    "requests>=2.32.4",
+    "yt-dlp>=2025.6.30",
+]
+
+[tool.uv.workspace]
+members = [
+    "douyin",
+]
