@@ -336,100 +336,6 @@ class DouyinVideoDownloader:
             print(f"提取sec_user_id失敗: {e}")
             return None
 
-    def extract_video_info(self, aweme_item):
-        """提取視頻信息"""
-        try:
-            # 獲取視頻描述
-            desc = aweme_item.get('desc', '無標題')
-            
-            # 清理文件名
-            safe_desc = re.sub(r'[<>:"/\\|?*]', '_', desc)[:50]
-            
-            # 獲取視頻ID
-            aweme_id = aweme_item.get('aweme_id', 'unknown')
-            
-            # 獲取視頻URL
-            video_urls = []
-            video_info = aweme_item.get('video', {})
-            
-            # 嘗試獲取play_addr中的url_list
-            play_addr = video_info.get('play_addr', {})
-            if 'url_list' in play_addr:
-                video_urls.extend(play_addr['url_list'])
-            
-            # 如果沒有找到，嘗試其他位置
-            if not video_urls:
-                bit_rate = video_info.get('bit_rate', [])
-                if bit_rate:
-                    play_addr = bit_rate[0].get('play_addr', {})
-                    if 'url_list' in play_addr:
-                        video_urls.extend(play_addr['url_list'])
-            
-            return {
-                'id': aweme_id,
-                'desc': safe_desc,
-                'urls': video_urls
-            }
-            
-        except Exception as e:
-            print(f"提取視頻信息失敗: {e}")
-            return None
-    
-    def process_video_list(self, aweme_list):
-        """處理視頻列表並下載"""
-        if not aweme_list:
-            print("沒有找到視頻列表")
-            return
-        
-        print(f"開始處理 {len(aweme_list)} 個視頻...")
-        
-        success_count = 0
-        for i, aweme_item in enumerate(aweme_list):
-            video_info = self.extract_video_info(aweme_item)
-            
-            if video_info and video_info['urls']:
-                # 使用第一個可用的URL
-                video_url = video_info['urls'][0]
-                filename = f"{video_info['id']}_{video_info['desc']}.mp4"
-                
-                if self.download_video(video_url, filename):
-                    success_count += 1
-                
-                # 添加延遲避免請求過快
-                time.sleep(1)
-            else:
-                print(f"✗ 無法提取視頻信息: {i+1}")
-        
-        print(f"\n下載完成！成功: {success_count}/{len(aweme_list)}")
-    
-    def fetch_mp4_from_page(self, page: ChromiumPage, video_page_url: str):
-        """在影片頁面監聽並返回所有 mp4 連結"""
-        page.listen.start()
-        page.get(video_page_url)
-        time.sleep(5)
-        mp4_urls = set()
-        for packets in page.listen.steps(timeout=5):
-            try:
-                # https://v3-dy-o.zjcdn.com/0eb869027bbc78e740f428e741dc1f7b/688347ca/video/tos/cn/tos-cn-ve-15/oQhdINEDorfAIfEMLoSpAZcEIyF679AaAGBzag/?a=6383&ch=10&cr=3&dr=0&lr=all&cd=0%7C0%7C0%7C3&cv=1&br=610&bt=610&cs=0&ds=6&ft=CZcaELOtDDhNJFVQ9w08veyhd.mtdYx03-ApQX&mime_type=video_mp4&qs=12&rc=NDc5Z2g2aDNmN2Y0Nzc2aUBpM3MzeHk5cmtsNDMzNGkzM0AtNl5iMTQyXjExLTJeNDEuYSNiZGxpMmRrYmhhLS1kLWFzcw%3D%3D&btag=80000e00008000&cc=1f&cquery=100x_100z_100o_101n_100B&dy_q=1753423248&feature_id=46a7bb47b4fd1280f3d3825bf2b29388&l=202507251400486B426523B84C12689001&req_cdn_type=&__vid=7523588279582149915
-
-                # headers = packet.response.headers if packet.response else {}
-                print(packets)
-                print(type(packets))
-                packets = packets.split("<")
-                print(len(packets))
-                for packet in packets:
-                # print(headers.url)
-                    print(packet)
-                    print(packet.url)
-
-                    if 'video' in packet.url:
-                        print(f"找到： {packet.url}")
-                        mp4_urls.add(packet.url)
-            except Exception:
-                continue
-        page.listen.stop()
-        return list(mp4_urls)
-
     def get_video_page_urls(self, page: ChromiumPage):
         """從當前頁面提取所有影片頁面網址"""
         container_xpath = "/html/body/div[2]/div[1]/div[4]/div[2]/div/div/div/div[3]/div/div/div[2]/div/div[2]"
@@ -444,6 +350,52 @@ class DouyinVideoDownloader:
             if href not in urls:
                 urls.append(href)
         return urls
+
+    def fetch_mp4_from_page(self, page: ChromiumPage, video_page_url: str):
+        """在影片頁面監聽並返回所有 mp4 連結"""
+        page.listen.start()
+        page.get(video_page_url)
+        time.sleep(5)
+
+        # 收集所有抓到的封包
+        packets = list(page.listen.steps(timeout=5))
+        page.listen.stop()
+
+        mp4_urls = []
+        for packet in packets:
+            url = getattr(packet, "url", "")
+            if not url:
+                continue
+
+            # 先依據 header 中的 content-type 判斷
+            ctype = ""
+            try:
+                if packet.response and packet.response.headers:
+                    ctype = packet.response.headers.get("Content-Type", "")
+            except Exception:
+                pass
+
+            if "video/mp4" in ctype or "video" in url.lower() and '.js' not in url.lower() and '.css' not in url.lower():
+                mp4_urls.append(url)
+
+        # 去除重複並保持順序
+        unique_urls = list(dict.fromkeys(mp4_urls))
+        return unique_urls
+    def get_video_page_urls(self, page: ChromiumPage):
+        """從當前頁面提取所有影片頁面網址"""
+        container_xpath = "/html/body/div[2]/div[1]/div[4]/div[2]/div/div/div/div[3]/div/div/div[2]/div/div[2]"
+        links = page.eles(f"xpath:{container_xpath}//a[@href]")
+        urls = []
+        for a in links:
+            href = a.attr("href")
+            if not href:
+                continue
+            if not href.startswith("http"):
+                href = "https://www.douyin.com/" + href.lstrip("/")
+            if href not in urls:
+                urls.append(href)
+        return urls
+
 
     def run(self, user_url, api_url=None):
         """主要運行函數"""
@@ -485,8 +437,8 @@ class DouyinVideoDownloader:
                 if close_btn:
                     close_btn.click()
                     time.sleep(2)
-
-            for _ in range(5):
+            import tqdm
+            for _ in tqdm.tqdm(range(5)):
                 page.scroll.to_bottom()
                 time.sleep(2)
 
@@ -499,12 +451,28 @@ class DouyinVideoDownloader:
                 if not mp4s:
                     print("未找到影片資源")
                     continue
+                sizes = []
                 for link in mp4s:
                     name = os.path.basename(urlparse(link).path)
-                    if not name.endswith('.mp4'):
-                        name += '.mp4'
-                    self.download_video(link, name)
+                    if name == '' or name == None or not name: 
+                        import random 
+                        name = str(random.randint(100000000000000, 99999999999999999)) + '.mp4'
+                    if not name.endswith('.mp4') or 'uuu' in name:
+                        continue
+                    size = self.download_video(link, name)
+                    sizes.append((size, name))
+                    print(f"size: {size}")
                     time.sleep(1)
+                       
+                sorted(sizes, key=lambda s: s[0]) # use size to sort
+                print(f'biggest: {sizes[0]}')
+                sizes.pop(0)
+                for (size , name) in sizes:
+                    if os.path.exists('douyin_videos/'+ name):
+                        os.remove(os.path.join('douyin_videos', name))
+
+                sizes = []
+        
         except Exception as e:
             print(f"瀏覽器操作失敗: {e}")
             import traceback
@@ -516,12 +484,10 @@ class DouyinVideoDownloader:
                 except Exception:
                     pass
             if user_data_dir:
-                shutil.rmtree(user_data_dir, ignore_errors=True)
-                
+                shutil.rmtree(user_data_dir, ignore_errors=True)                
 def main():
     # 用戶URL
-    user_url = "https://www.douyin.com/user/MS4wLjABAAAAhGTvofJSpb_dRb51A_xGF5siEeiHB2ryBSRZ9V0NtM7C-UgZ9ACJLTO7HwEGnFSE?from_tab_name=main"
-    
+    user_url = "https://www.douyin.com/user/MS4wLjABAAAA4UAJ57hn-vBHuN-OF1D5fv66HG7QSEC9KcGE5UKO0McCgah4U6hqVNPZZUpN7YsW?from_tab_name=main"
     # 創建下載器實例
     downloader = DouyinVideoDownloader()
     
