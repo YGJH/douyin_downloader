@@ -103,6 +103,14 @@ class DouyinVideoDownloader:
                 continue
         page.listen.stop()
         return list(mp4_urls)
+class DouyinVideoDownloader:
+    def __init__(self, download_folder="douyin_videos", cookies_file="cookies.json"):
+        self.download_folder = download_folder
+        self.cookies_file = cookies_file
+        self.session = requests.Session()
+        self.setup_session()
+        self.load_cookies()
+        self.create_download_folder()
     
     def get_video_list_with_browser(self, user_url):
         """使用瀏覽器獲取視頻列表"""
@@ -183,14 +191,15 @@ class DouyinVideoDownloader:
                         found_responses.append(response.url)
                         print(f"找到響應: {response.url[:100]}...")
                         
-                        if 'post' in response.url:
+                        if 'post' in response.url or True:
                             print(f"找到aweme API請求: {response.url[:100]}...")
                             try:
                                 data = response.response.body
                                 if data:
                                     # 嘗試解析為JSON
                                     if isinstance(data, str):
-                                        json_data = json.loads(data)
+                                    text = page.listen.response_text(response, timeout=5)
+                                    json_data = json.loads(text)
                                     else:
                                         json_data = data
                                     
@@ -223,7 +232,104 @@ class DouyinVideoDownloader:
                     shutil.rmtree(user_data_dir, ignore_errors=True)
                 except:
                     pass
+
+    def create_download_folder(self):
+        """創建下載資料夾"""
+        if not os.path.exists(self.download_folder):
+            os.makedirs(self.download_folder)
+            print(f"已創建下載資料夾: {self.download_folder}")
     
+
+    def setup_session(self):
+        """設置請求頭"""
+        self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/plain, */*',
+            'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Referer': 'https://www.douyin.com/',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
+        })
+    
+    def load_cookies(self):
+        """從 cookies.json 文件載入 cookies"""
+        if not os.path.exists(self.cookies_file):
+            print(f"未找到 cookies 文件: {self.cookies_file}")
+            return
+        
+        try:
+            # 讀取 JSON 格式的 cookies 文件
+            with open(self.cookies_file, 'r', encoding='utf-8') as f:
+                cookies_list = json.load(f)
+            
+            cookies_count = 0
+            for cookie in cookies_list:
+                try:
+                    name = cookie.get('name')
+                    value = cookie.get('value')
+                    domain = cookie.get('domain', '.douyin.com')
+                    
+                    if name and value:
+                        self.session.cookies.set(name, value, domain=domain)
+                        cookies_count += 1
+                        
+                except Exception as cookie_error:
+                    print(f"設置單個 cookie 失敗: {cookie.get('name', 'unknown')}, 錯誤: {cookie_error}")
+                    continue
+            
+            print(f"成功載入 {cookies_count} 個 cookies")
+            
+        except Exception as e:
+            print(f"載入 cookies 失敗: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def load_cookies_to_browser(self, page):
+        """將 cookies 載入到瀏覽器"""
+        if not os.path.exists(self.cookies_file):
+            return
+        
+        try:
+            # 先訪問抖音主頁以設置域名
+            page.get('https://www.douyin.com')
+            time.sleep(2)
+            
+            # 讀取 JSON 格式的 cookies 文件
+            with open(self.cookies_file, 'r', encoding='utf-8') as f:
+                cookies_list = json.load(f)
+            
+            cookies_count = 0
+            for cookie in cookies_list:
+                try:
+                    # 構建 cookie 字典，只使用必要的字段
+                    cookie_dict = {
+                        'name': cookie.get('name'),
+                        'value': cookie.get('value'),
+                        'domain': cookie.get('domain', '.douyin.com'),
+                        'path': cookie.get('path', '/'),
+                        'secure': cookie.get('secure', False),
+                        'httpOnly': cookie.get('httpOnly', False)
+                    }
+                    
+                    # 過濾掉無效的 cookies
+                    if cookie_dict['name'] and cookie_dict['value']:
+                        page.set.cookies(cookie_dict)
+                        cookies_count += 1
+                        
+                except Exception as cookie_error:
+                    print(f"設置單個 cookie 失敗: {cookie.get('name', 'unknown')}, 錯誤: {cookie_error}")
+                    continue
+            
+            print(f"成功載入 {cookies_count} 個 cookies 到瀏覽器")
+            
+        except Exception as e:
+            print(f"載入 cookies 到瀏覽器失敗: {e}")
+            import traceback
+            traceback.print_exc()
+
     def fetch_video_list(self, api_url):
         """使用API獲取視頻列表"""
         try:

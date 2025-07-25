@@ -1,0 +1,9 @@
+現在獲取影片url的方式似乎失效了
+請你現在改成從這個/html/body/div[2]/div[1]/div[4]/div[2]/div/div/div/div[3]/div/div/div[2]/div/div[2]
+上面這個元素裡有很多<a>元素，像是以下這樣的
+/html/body/div[2]/div[1]/div[4]/div[2]/div/div/div/div[3]/div/div/div[2]/div/div[2]/ul/li[4]/div/a
+把這個<a>的href找出來，大概會長這樣：
+video/7522072561275112742
+把這段改成：https://www.douyin.com/video/7522072561275112742
+
+這時應該會監聽到封包有mime_type=video_mp4這段的全部都用get方法載下來
