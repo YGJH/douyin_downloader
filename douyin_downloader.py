@@ -8,105 +8,13 @@ import re
 import tempfile
 import shutil
 
+    
+
+
 class DouyinVideoDownloader:
     def __init__(self, download_folder="douyin_videos", cookie_file="cookies.json"):
         self.download_folder = download_folder
         self.cookie_file = cookie_file
-        self.session = requests.Session()
-        self.setup_session()
-        self.load_cookies()
-        self.create_download_folder()
-
-    def load_cookies(self):
-        """載入或創建 cookies 檔"""
-        if not os.path.exists(self.cookie_file):
-            default = []
-            try:
-                # 如果存放在專案目錄外，直接寫入預設內容
-                default = json.loads("[]")
-            except Exception:
-                pass
-            with open(self.cookie_file, "w", encoding="utf-8") as f:
-                json.dump(default, f, ensure_ascii=False, indent=2)
-        try:
-            with open(self.cookie_file, "r", encoding="utf-8") as f:
-                cookies = json.load(f)
-            for ck in cookies:
-                name = ck.get("name", "")
-                value = ck.get("value", "")
-                domain = ck.get("domain", "")
-                if name:
-                    self.session.cookies.set(name, value, domain=domain)
-        except Exception as e:
-            print(f"讀取 cookies 失敗: {e}")
-        
-    def setup_session(self):
-        """設置請求頭"""
-        self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'zh-TW,zh;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Referer': 'https://www.douyin.com/',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-origin',
-        })
-    
-    def create_download_folder(self):
-        """創建下載資料夾"""
-        if not os.path.exists(self.download_folder):
-            os.makedirs(self.download_folder)
-            print(f"已創建下載資料夾: {self.download_folder}")
-    
-    def extract_sec_user_id(self, user_url):
-        """從用戶頁面URL提取sec_user_id"""
-        try:
-            # 使用正則表達式提取sec_user_id
-            match = re.search(r'/user/([^?]+)', user_url)
-            if match:
-                return match.group(1)
-            return None
-        except Exception as e:
-            print(f"提取sec_user_id失敗: {e}")
-            return None
-
-    def get_video_page_urls(self, page: ChromiumPage):
-        """從當前頁面提取所有影片頁面網址"""
-        container_xpath = "/html/body/div[2]/div[1]/div[4]/div[2]/div/div/div/div[3]/div/div/div[2]/div/div[2]"
-        links = page.eles(f"xpath:{container_xpath}//a[@href]")
-        urls = []
-        for a in links:
-            href = a.attr("href")
-            if not href:
-                continue
-            if not href.startswith("http"):
-                href = "https://www.douyin.com/" + href.lstrip("/")
-            if href not in urls:
-                urls.append(href)
-        return urls
-
-    def fetch_mp4_from_page(self, page: ChromiumPage, video_page_url: str):
-        """在影片頁面監聽並返回所有 mp4 連結"""
-        page.listen.start()
-        page.get(video_page_url)
-        time.sleep(5)
-        mp4_urls = set()
-        for packet in page.listen.steps(timeout=5):
-            try:
-                headers = packet.response.headers if packet.response else {}
-                ctype = headers.get('Content-Type', '') if headers else ''
-                if 'video/mp4' in ctype:
-                    mp4_urls.add(packet.url)
-            except Exception:
-                continue
-        page.listen.stop()
-        return list(mp4_urls)
-class DouyinVideoDownloader:
-    def __init__(self, download_folder="douyin_videos", cookies_file="cookies.json"):
-        self.download_folder = download_folder
-        self.cookies_file = cookies_file
         self.session = requests.Session()
         self.setup_session()
         self.load_cookies()
@@ -198,8 +106,8 @@ class DouyinVideoDownloader:
                                 if data:
                                     # 嘗試解析為JSON
                                     if isinstance(data, str):
-                                    text = page.listen.response_text(response, timeout=5)
-                                    json_data = json.loads(text)
+                                        text = page.listen.response_text(response, timeout=5)
+                                        json_data = json.loads(text)
                                     else:
                                         json_data = data
                                     
@@ -256,13 +164,13 @@ class DouyinVideoDownloader:
     
     def load_cookies(self):
         """從 cookies.json 文件載入 cookies"""
-        if not os.path.exists(self.cookies_file):
-            print(f"未找到 cookies 文件: {self.cookies_file}")
+        if not os.path.exists(self.cookie_file):
+            print(f"未找到 cookies 文件: {self.cookie_file}")
             return
         
         try:
             # 讀取 JSON 格式的 cookies 文件
-            with open(self.cookies_file, 'r', encoding='utf-8') as f:
+            with open(self.cookie_file, 'r', encoding='utf-8') as f:
                 cookies_list = json.load(f)
             
             cookies_count = 0
@@ -416,7 +324,18 @@ class DouyinVideoDownloader:
         except Exception as e:
             print(f"✗ 下載失敗: {filename}, 錯誤: {e}")
             return False
-    
+    def extract_sec_user_id(self, user_url):
+        """從用戶頁面URL提取sec_user_id"""
+        try:
+            # 使用正則表達式提取sec_user_id
+            match = re.search(r'/user/([^?]+)', user_url)
+            if match:
+                return match.group(1)
+            return None
+        except Exception as e:
+            print(f"提取sec_user_id失敗: {e}")
+            return None
+
     def extract_video_info(self, aweme_item):
         """提取視頻信息"""
         try:
@@ -483,6 +402,49 @@ class DouyinVideoDownloader:
         
         print(f"\n下載完成！成功: {success_count}/{len(aweme_list)}")
     
+    def fetch_mp4_from_page(self, page: ChromiumPage, video_page_url: str):
+        """在影片頁面監聽並返回所有 mp4 連結"""
+        page.listen.start()
+        page.get(video_page_url)
+        time.sleep(5)
+        mp4_urls = set()
+        for packets in page.listen.steps(timeout=5):
+            try:
+                # https://v3-dy-o.zjcdn.com/0eb869027bbc78e740f428e741dc1f7b/688347ca/video/tos/cn/tos-cn-ve-15/oQhdINEDorfAIfEMLoSpAZcEIyF679AaAGBzag/?a=6383&ch=10&cr=3&dr=0&lr=all&cd=0%7C0%7C0%7C3&cv=1&br=610&bt=610&cs=0&ds=6&ft=CZcaELOtDDhNJFVQ9w08veyhd.mtdYx03-ApQX&mime_type=video_mp4&qs=12&rc=NDc5Z2g2aDNmN2Y0Nzc2aUBpM3MzeHk5cmtsNDMzNGkzM0AtNl5iMTQyXjExLTJeNDEuYSNiZGxpMmRrYmhhLS1kLWFzcw%3D%3D&btag=80000e00008000&cc=1f&cquery=100x_100z_100o_101n_100B&dy_q=1753423248&feature_id=46a7bb47b4fd1280f3d3825bf2b29388&l=202507251400486B426523B84C12689001&req_cdn_type=&__vid=7523588279582149915
+
+                # headers = packet.response.headers if packet.response else {}
+                print(packets)
+                print(type(packets))
+                packets = packets.split("<")
+                print(len(packets))
+                for packet in packets:
+                # print(headers.url)
+                    print(packet)
+                    print(packet.url)
+
+                    if 'video' in packet.url:
+                        print(f"找到： {packet.url}")
+                        mp4_urls.add(packet.url)
+            except Exception:
+                continue
+        page.listen.stop()
+        return list(mp4_urls)
+
+    def get_video_page_urls(self, page: ChromiumPage):
+        """從當前頁面提取所有影片頁面網址"""
+        container_xpath = "/html/body/div[2]/div[1]/div[4]/div[2]/div/div/div/div[3]/div/div/div[2]/div/div[2]"
+        links = page.eles(f"xpath:{container_xpath}//a[@href]")
+        urls = []
+        for a in links:
+            href = a.attr("href")
+            if not href:
+                continue
+            if not href.startswith("http"):
+                href = "https://www.douyin.com/" + href.lstrip("/")
+            if href not in urls:
+                urls.append(href)
+        return urls
+
     def run(self, user_url, api_url=None):
         """主要運行函數"""
         print("=== 抖音視頻下載器 ===")
@@ -555,7 +517,7 @@ class DouyinVideoDownloader:
                     pass
             if user_data_dir:
                 shutil.rmtree(user_data_dir, ignore_errors=True)
-
+                
 def main():
     # 用戶URL
     user_url = "https://www.douyin.com/user/MS4wLjABAAAAhGTvofJSpb_dRb51A_xGF5siEeiHB2ryBSRZ9V0NtM7C-UgZ9ACJLTO7HwEGnFSE?from_tab_name=main"
