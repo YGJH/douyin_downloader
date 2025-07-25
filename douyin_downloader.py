@@ -9,11 +9,36 @@ import tempfile
 import shutil
 
 class DouyinVideoDownloader:
-    def __init__(self, download_folder="douyin_videos"):
+    def __init__(self, download_folder="douyin_videos", cookie_file="cookies.json"):
         self.download_folder = download_folder
+        self.cookie_file = cookie_file
         self.session = requests.Session()
         self.setup_session()
+        self.load_cookies()
         self.create_download_folder()
+
+    def load_cookies(self):
+        """載入或創建 cookies 檔"""
+        if not os.path.exists(self.cookie_file):
+            default = []
+            try:
+                # 如果存放在專案目錄外，直接寫入預設內容
+                default = json.loads("[]")
+            except Exception:
+                pass
+            with open(self.cookie_file, "w", encoding="utf-8") as f:
+                json.dump(default, f, ensure_ascii=False, indent=2)
+        try:
+            with open(self.cookie_file, "r", encoding="utf-8") as f:
+                cookies = json.load(f)
+            for ck in cookies:
+                name = ck.get("name", "")
+                value = ck.get("value", "")
+                domain = ck.get("domain", "")
+                if name:
+                    self.session.cookies.set(name, value, domain=domain)
+        except Exception as e:
+            print(f"讀取 cookies 失敗: {e}")
         
     def setup_session(self):
         """設置請求頭"""
@@ -46,6 +71,52 @@ class DouyinVideoDownloader:
         except Exception as e:
             print(f"提取sec_user_id失敗: {e}")
             return None
+
+    def get_video_page_urls(self, page: ChromiumPage):
+        """從當前頁面提取所有影片頁面網址"""
+        container_xpath = "/html/body/div[2]/div[1]/div[4]/div[2]/div/div/div/div[3]/div/div/div[2]/div/div[2]"
+        links = page.eles(f"xpath:{container_xpath}//a[@href]")
+        urls = []
+        for a in links:
+            href = a.attr("href")
+            if not href:
+                continue
+            if not href.startswith("http"):
+                href = "https://www.douyin.com/" + href.lstrip("/")
+            if href not in urls:
+                urls.append(href)
+        return urls
+
+    def fetch_mp4_from_page(self, page: ChromiumPage, video_page_url: str):
+        """在影片頁面監聽並返回所有 mp4 連結"""
+        page.listen.start()
+        page.get(video_page_url)
+        time.sleep(5)
+
+        # 收集所有抓到的封包
+        packets = list(page.listen.steps(timeout=5))
+        page.listen.stop()
+
+        mp4_urls = []
+        for packet in packets:
+            url = getattr(packet, "url", "")
+            if not url:
+                continue
+
+            # 先依據 header 中的 content-type 判斷
+            ctype = ""
+            try:
+                if packet.response and packet.response.headers:
+                    ctype = packet.response.headers.get("Content-Type", "")
+            except Exception:
+                pass
+
+            if "video/mp4" in ctype or "video" in url.lower():
+                mp4_urls.append(url)
+
+        # 去除重複並保持順序
+        unique_urls = list(dict.fromkeys(mp4_urls))
+        return unique_urls
     
     def get_video_list_with_browser(self, user_url):
         """使用瀏覽器獲取視頻列表"""
@@ -324,15 +395,74 @@ class DouyinVideoDownloader:
         """主要運行函數"""
         print("=== 抖音視頻下載器 ===")
         print(f"用戶頁面: {user_url}")
-        
-        # 由於API URL可能已過期，直接使用瀏覽器獲取數據
-        print("使用瀏覽器獲取數據...")
-        aweme_list = self.get_video_list_with_browser(user_url)
-        
-        if aweme_list:
-            self.process_video_list(aweme_list)
-        else:
-            print("無法獲取視頻數據")
+
+        user_data_dir = None
+        page = None
+        try:
+            co = ChromiumOptions()
+            chrome_path = '/usr/bin/google-chrome'
+            co.set_browser_path(chrome_path)
+            co.set_argument('--no-sandbox')
+            co.set_argument('--disable-dev-shm-usage')
+            co.set_argument('--disable-web-security')
+            co.set_argument('--disable-features=VizDisplayCompositor')
+            co.set_argument('--disable-extensions')
+            co.set_argument('--disable-plugins')
+            co.set_argument('--disable-images')
+            co.set_argument('--disable-setuid-sandbox')
+            co.set_argument('--remote-debugging-address=0.0.0.0')
+            co.set_argument('--headless=new')
+
+            user_data_dir = tempfile.mkdtemp()
+            co.set_user_data_path(user_data_dir)
+            co.auto_port(9222)
+            co.set_argument(f'--remote-debugging-port={9222}')
+
+            print("正在啟動Chrome瀏覽器...")
+            page = ChromiumPage(addr_or_opts=co)
+
+            print("訪問用戶頁面...")
+            page.get(user_url)
+            time.sleep(5)
+
+            login_panel = page.ele('#douyin-login-new-id')
+            if login_panel:
+                close_btn = page.ele('rect[fill="url(#pattern0_3645_22461)"]')
+                if close_btn:
+                    close_btn.click()
+                    time.sleep(2)
+
+            for _ in range(5):
+                page.scroll.to_bottom()
+                time.sleep(2)
+
+            video_pages = self.get_video_page_urls(page)
+            print(f"找到 {len(video_pages)} 個影片頁面")
+
+            for vp in video_pages:
+                print(f"打開: {vp}")
+                mp4s = self.fetch_mp4_from_page(page, vp)
+                if not mp4s:
+                    print("未找到影片資源")
+                    continue
+                for link in mp4s:
+                    name = os.path.basename(urlparse(link).path)
+                    if not name.endswith('.mp4'):
+                        name += '.mp4'
+                    self.download_video(link, name)
+                    time.sleep(1)
+        except Exception as e:
+            print(f"瀏覽器操作失敗: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            if page:
+                try:
+                    page.quit()
+                except Exception:
+                    pass
+            if user_data_dir:
+                shutil.rmtree(user_data_dir, ignore_errors=True)
 
 def main():
     # 用戶URL
