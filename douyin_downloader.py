@@ -306,7 +306,7 @@ class DouyinVideoDownloader:
             }
             
             response = requests.get(video_url, headers=headers, stream=True)
-            
+            file_size = 0
             if response.status_code == 200:
                 filepath = os.path.join(self.download_folder, filename)
                 
@@ -314,9 +314,10 @@ class DouyinVideoDownloader:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
+                            file_size+=len(chunk)
                 
                 print(f"✓ 下載完成: {filename}")
-                return True
+                return file_size
             else:
                 print(f"✗ 下載失敗: {filename}, 狀態碼: {response.status_code}")
                 return False
@@ -487,7 +488,8 @@ class DouyinVideoDownloader:
                 shutil.rmtree(user_data_dir, ignore_errors=True)                
 def main():
     # 用戶URL
-    user_url = "https://www.douyin.com/user/MS4wLjABAAAA4UAJ57hn-vBHuN-OF1D5fv66HG7QSEC9KcGE5UKO0McCgah4U6hqVNPZZUpN7YsW?from_tab_name=main"
+    # user_url = "https://www.douyin.com/user/MS4wLjABAAAAhGTvofJSpb_dRb51A_xGF5siEeiHB2ryBSRZ9V0NtM7C-UgZ9ACJLTO7HwEGnFSE?from_tab_name=main"
+    # user_url = "https://www.douyin.com/user/MS4wLjABAAAA4UAJ57hn-vBHuN-OF1D5fv66HG7QSEC9KcGE5UKO0McCgah4U6hqVNPZZUpN7YsW?from_tab_name=main"
     # 創建下載器實例
     downloader = DouyinVideoDownloader()
     

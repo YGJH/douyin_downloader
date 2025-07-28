@@ -9,5 +9,8 @@ douyin_videos/
 *.mp3
 *.mp4
 *.wav
+douyin_videos/
+**copy**
 # Virtual environments
 .venv
+
